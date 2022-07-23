@@ -2,14 +2,8 @@
 <html>
 	<head>
 		<meta charset="UTF-8">		
-		<title>Gray-Scott Reaction Diffusion System</title>
-		
-		<link rel="stylesheet" href="./js/jquery-ui.css">
+		<title>Gray-Scott Reaction Diffusion System</title>		
 		<link rel="shortcut icon" href="">
-		<script src="./js/jquery-1.12.4.js"></script>
-		<script src="./js/jquery-ui.js"></script>
-		<script src="./js/jquery.ui.touch-punch.min.js"></script>
-		<script src="./js/three.min.js"></script>
 
 		<script type="x-shader/x-vertex" id="standardVertexShader">
 			varying vec2 vertUV;
@@ -118,6 +112,7 @@
 				gl_FragColor = vec4(col.r, col.g, col.b, 1.0);
 			}
 		</script>
+		
 		<script type="importmap">
 			{
 				"imports": {
@@ -125,9 +120,11 @@
 				}
 			}
 		</script>
-
+		
+		<script src="./three.min.js"></script>
 		<script type="module">
 			import { GUI } from "lil-gui";
+			
 			let canvas          = null;
 			let isMouseDown     = false;
 			let isClearON       = false;
@@ -164,7 +161,10 @@
 			let Dv              = 0.105;
 			
 			// GUI
-			const gui = new GUI();
+			const gui = new GUI( { autoplace: false } );
+			gui.close();
+			gui.domElement.id = "gui";
+			
 			const params = {
 				feed: 0.037,
 				kill: 0.2097,
@@ -205,24 +205,24 @@
 			gui.add(buttons, "Draw");
 			
 			const selections = {
-				paramsName: "Default"
+				combo: null
 			}
 			
 			// https://stackoverflow.com/questions/16166440/refresh-dat-gui-with-new-values
-			gui.add(selections, "paramsName", {
+			gui.add(selections, "combo", {
 				Default: [0.037, 0.06 , 0.2097, 0.105],
 				neon:    [0.025, 0.06 , 0.2097, 0.105],
 				worm:    [0.037, 0.06 , 0.1600, 0.100]
 			}).onChange(function() {
-				mUniforms.feed.value = selections.paramsName[0];
-				mUniforms.kill.value = selections.paramsName[1];
-				mUniforms.Du.value   = selections.paramsName[2];
-				mUniforms.Dv.value   = selections.paramsName[3];
+				mUniforms.feed.value = selections.combo[0];
+				mUniforms.kill.value = selections.combo[1];
+				mUniforms.Du.value   = selections.combo[2];
+				mUniforms.Dv.value   = selections.combo[3];
 				
-				params.feed = selections.paramsName[0];
-				params.kill = selections.paramsName[1];
-				params.Du   = selections.paramsName[2];
-				params.Dv   = selections.paramsName[3];
+				params.feed = selections.combo[0];
+				params.kill = selections.combo[1];
+				params.Du   = selections.combo[2];
+				params.Dv   = selections.combo[3];
 			});
 			
 			console.log(gui[0]);
@@ -504,12 +504,14 @@
 		</script>
 		
 		<style>
-			#myCanvas       {width: 1024px; height: 512px;}
+			* { margin: 0; padding: 0; }
+			#myCanvas { width: 1024px; height: 512px; }
+			#gui { width: 200px; position: absolute; top: 0; left: 824px; }
 		</style>
 		
 	</head>
 	
-	<body onload=init()>
+	<body>
 		<canvas id="myCanvas"></canvas>
 	</body>
 	

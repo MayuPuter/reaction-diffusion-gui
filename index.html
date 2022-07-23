@@ -172,22 +172,22 @@
 				Dv:   0.105,
 			};
 
-			gui.add(params, "feed", 0, 0.100, 0.001).onChange(function() {
+			let guiFeed = gui.add(params, "feed", 0, 0.100, 0.001).listen().onChange(function() {
 				mUniforms.feed.value = params.feed;
 				feed = params.feed;
 			});
 			
-			gui.add(params, "kill", 0, 0.100, 0.001).onChange(function() {
+			let guiKill = gui.add(params, "kill", 0, 0.100, 0.001).listen().onChange(function() {
 				mUniforms.kill.value = params.kill;
 				kill = params.kill;
 			});
 			
-			gui.add(params, "Du", 0, 0.400, 0.001).onChange(function() {
+			let guiDu = gui.add(params, "Du", 0, 0.400, 0.001).listen().onChange(function() {
 				mUniforms.Du.value = params.Du;
 				Du = params.Du;
 			});
 			
-			gui.add(params, "Dv", 0, 0.200, 0.001).onChange(function() {
+			let guiDv = gui.add(params, "Dv", 0, 0.200, 0.001).listen().onChange(function() {
 				mUniforms.Dv.value = params.Dv;
 				Dv = params.Dv;
 			});
@@ -208,6 +208,7 @@
 				paramsName: "Default"
 			}
 			
+			// https://stackoverflow.com/questions/16166440/refresh-dat-gui-with-new-values
 			gui.add(selections, "paramsName", {
 				Default: [0.037, 0.06 , 0.2097, 0.105],
 				neon:    [0.025, 0.06 , 0.2097, 0.105],
@@ -217,7 +218,14 @@
 				mUniforms.kill.value = selections.paramsName[1];
 				mUniforms.Du.value   = selections.paramsName[2];
 				mUniforms.Dv.value   = selections.paramsName[3];
+				
+				params.feed = selections.paramsName[0];
+				params.kill = selections.paramsName[1];
+				params.Du   = selections.paramsName[2];
+				params.Dv   = selections.paramsName[3];
 			});
+			
+			console.log(gui[0]);
 
 			// 初期化
 			window.onload = init();
@@ -364,8 +372,6 @@
 				drawUV();
 
 				event.stopPropagation();
-				
-				console.log("Mouse: ", position);
 			}
 
 			function onMouseMove(event)

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">		
+		<title>Gray-Scott Reaction Diffusion System</title>		
+		<link rel="shortcut icon" href="">
+
+		<script type="x-shader/x-vertex" id="standardVertexShader">
+			varying vec2 vertUV;
+			
+			void main()
+			{
+				vertUV = uv;
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+			}
+		</script>
+		
+		<script type="x-shader/x-fragment" id="gsFragmentShader">
+			precision highp float;
+			
+			varying vec2 vertUV;
+			
+			uniform float screenWidth;
+			uniform float screenHeight;
+			uniform vec2 brush;
+			uniform sampler2D tSource;
+			
+			uniform float dt;
+			uniform float Du;
+			uniform float Dv;
+			uniform float feed;
+			uniform float kill;		
+
+			void main()
+			{
+				float step_x = 1.0 / screenWidth;
+				float step_y = 1.0 / screenHeight;
+				
+				vec2 uv   = texture2D(tSource, vertUV).rg;
+				vec2 uv_L = texture2D(tSource, vertUV + vec2(-step_x, 0.0)).rg;
+				vec2 uv_R = texture2D(tSource, vertUV + vec2( step_x, 0.0)).rg;
+				vec2 uv_D = texture2D(tSource, vertUV + vec2(0.0, -step_y)).rg;
+				vec2 uv_U = texture2D(tSource, vertUV + vec2(0.0,  step_y)).rg;
+				vec2 lapl = (uv_L + uv_R + uv_D + uv_U - 4.0 * uv);
+				
+				float du = Du * lapl.r - uv.r * uv.g * uv.g - feed * uv.r + feed;
+				float dv = Dv * lapl.g + uv.r * uv.g * uv.g - feed * uv.g - kill * uv.g;
+				
+				vec2 nextUV = uv + dt * vec2(du, dv);
+				
+				vec2 diff = (vertUV - brush) / vec2(step_x, step_y);				
+                if (dot(diff, diff) < brush.x)
+					nextUV.g = 0.9;						
+
+                gl_FragColor = vec4(nextUV.r, nextUV.g, 0.0, 1.0);
+			}
+		</script> 
+		
+		<script type="x-shader/x-fragment" id="screenFragmentShader">
+			precision highp float;
+			
+			varying vec2 vertUV;
+			
+			uniform float screenWidth;
+			uniform float screenHeight;
+			uniform sampler2D tSource;
+			
+			void main()
+			{
+				vec2 texel = vec2(1.0 / screenWidth, 1.0 / screenHeight);
+				
+				vec4 c1 = vec4(0, 0, 0, 0.0);
+				vec4 c2 = vec4(1, 0, 0, 0.2);
+				vec4 c3 = vec4(0, 1, 0, 0.3);
+				vec4 c4 = vec4(0, 0, 1, 0.4);
+				vec4 c5 = vec4(1, 1, 1, 0.6);
+			
+				float value = texture2D(tSource, vertUV).g;
+				float a;
+				vec3 col;
+				
+				if (value <= c1.a)
+					col = c1.rgb;
+					
+				if (value > c1.a && value <= c2.a)
+				{
+					a = (value - c1.a) / (c2.a - c1.a);
+					col = mix(c1.rgb, c2.rgb, a);
+				}
+				
+				if (value > c2.a && value <= c3.a)
+				{
+					a = (value - c2.a) / (c3.a - c2.a);
+					col = mix(c2.rgb, c3.rgb, a);
+				}
+				
+				if (value > c3.a && value <= c4.a)
+				{
+					a = (value - c3.a) / (c4.a - c3.a);
+					col = mix(c3.rgb, c4.rgb, a);
+				}
+				
+				if (value > c4.a && value <= c5.a)
+				{
+					a = (value - c4.a) / (c5.a - c4.a);
+					col = mix(c4.rgb, c5.rgb, a);
+				}
+				
+				if (value > c5.a)
+					col = c5.rgb;
+				
+				gl_FragColor = vec4(col.r, col.g, col.b, 1.0);
+			}
+		</script>
+		
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"
+			integrity="sha512-WoO4Ih0CDOSLYafy22wZD/mcJ7k0ESLqtQsFa6zFKnEUrbtuGU+GkLtVhgt93xa2qewG5gKEC6CWlN8OaCTSVg=="
+			crossorigin="anonymous"
+			referrerpolicy="no-referrer">
+		</script>
+		
+		<script src="./three.min.js"></script>
+		<script type="module">			
+			let canvas          = null;
+			let isMouseDown     = false;
+			let isClearON       = false;
+			let isNotInit       = true;
+
+			// マウス、タップの座標
+			let position        = [];
+			position.x          = 0;
+			position.y          = 0;
+			position.px         = 0;
+			position.py         = 0;
+
+			// 横比率、縦比率
+			let rate            = [];
+			rate.x              = 0;
+			rate.y              = 0;
+
+			let mRenderer       = null;
+			let mScene          = null;
+			let mCamera         = null;
+
+			let mUniforms       = null;
+			let mTexture1       = null;
+			let mTexture2       = null;
+			let mGSMaterial     = null;
+			let mScreenMaterial = null;
+			let mScreenQuad     = null;
+			let mToggled        = false;
+			let mMinusOnes      = new THREE.Vector2(-1, -1);
+			
+			let feed            = 0.037;
+			let kill            = 0.06;
+			let Du              = 0.2097;
+			let Dv              = 0.105;
+			
+			// GUI
+			const gui = new dat.GUI( { autoplace: false } );
+			//gui.close();
+			gui.domElement.id = "gui";
+			
+			const params = {
+				feed: 0.037,
+				kill: 0.2097,
+				Du:   0.06,
+				Dv:   0.105,
+			};
+
+			let guiFeed = gui.add(params, "feed", 0, 0.100, 0.001).listen().onChange(function() {
+				mUniforms.feed.value = params.feed;
+				feed = params.feed;
+			});
+			
+			let guiKill = gui.add(params, "kill", 0, 0.100, 0.001).listen().onChange(function() {
+				mUniforms.kill.value = params.kill;
+				kill = params.kill;
+			});
+			
+			let guiDu = gui.add(params, "Du", 0, 0.400, 0.001).listen().onChange(function() {
+				mUniforms.Du.value = params.Du;
+				Du = params.Du;
+			});
+			
+			let guiDv = gui.add(params, "Dv", 0, 0.200, 0.001).listen().onChange(function() {
+				mUniforms.Dv.value = params.Dv;
+				Dv = params.Dv;
+			});
+			
+			const buttons = {
+				"Clear": function() {
+					clearScreen();
+				},
+				"Draw": function() {
+					initDrawUV();
+				}
+			};
+			
+			gui.add(buttons, "Clear");
+			gui.add(buttons, "Draw");
+			
+			const selections = {
+				combo: null
+			}
+			
+			// https://stackoverflow.com/questions/16166440/refresh-dat-gui-with-new-values
+			gui.add(selections, "combo", {
+				Default: [0.037, 0.06 , 0.2097, 0.105],
+				neon:    [0.025, 0.06 , 0.2097, 0.105],
+				worm:    [0.037, 0.06 , 0.1600, 0.100]
+			}).onChange(function() {
+				mUniforms.feed.value = selections.combo.split(',')[0];
+				mUniforms.kill.value = selections.combo.split(',')[1];
+				mUniforms.Du.value   = selections.combo.split(',')[2];
+				mUniforms.Dv.value   = selections.combo.split(',')[3];
+				
+				params.feed = selections.combo.split(',')[0];
+				params.kill = selections.combo.split(',')[1];
+				params.Du   = selections.combo.split(',')[2];
+				params.Dv   = selections.combo.split(',')[3];
+			});
+			
+			console.log(gui[0]);
+
+			// 初期化
+			window.onload = init();
+			
+			function init() 
+			{
+				console.log("2022-07-19 10:46");
+				
+				mUniforms =
+					{
+						screenWidth:  {type: "f",  value: undefined },
+						screenHeight: {type: "f",  value: undefined },
+						tSource:      {type: "t",  value: undefined },
+						dt:           {type: "f",  value: 1.0       },
+						Du:           {type: "f",  value: Du   },
+						Dv:           {type: "f",  value: Dv   },
+						feed:         {type: "f",  value: feed },
+						kill:         {type: "f",  value: kill },
+						brush:        {type: "v2", value: new THREE.Vector2(0.5, 0.5)}
+					};
+				
+				// キャンバスの取得
+				canvas = document.getElementById("myCanvas");
+				
+				// レンダラー生成
+				mRenderer = new THREE.WebGLRenderer({canvas: canvas, preserveDrawingBuffer: true});
+								
+				// シーンの生成
+				mScene = new THREE.Scene();
+				
+				// カメラの生成
+				mCamera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, -10000, 10000);
+				mCamera.position.z = 100;
+				mScene.add(mCamera);
+				
+				// マテリアルの生成
+				mGSMaterial = new THREE.ShaderMaterial(
+					{
+						uniforms      : mUniforms,
+						vertexShader  : document.getElementById('standardVertexShader').textContent,
+						fragmentShader: document.getElementById('gsFragmentShader').textContent
+					}
+				);
+				
+				mScreenMaterial = new THREE.ShaderMaterial(
+					{
+						uniforms      : mUniforms,
+						vertexShader  : document.getElementById('standardVertexShader').textContent,
+						fragmentShader: document.getElementById('screenFragmentShader').textContent
+					}
+				);
+				
+				// メッシュの生成
+				let plane   = new THREE.PlaneGeometry(1.0, 1.0);
+				mScreenQuad = new THREE.Mesh(plane, mScreenMaterial);
+				mScene.add(mScreenQuad);
+								
+				// リサイズ
+				resize(canvas.clientWidth, canvas.clientHeight);
+
+				// アニメーション
+				animation();
+				
+				// イベントの設定
+				canvas.addEventListener('mousedown' , onMouseDown, false); 
+				canvas.addEventListener("mousemove" , onMouseMove, false); 
+				canvas.addEventListener("mouseup"   , onMouseUp, false); 
+				window.addEventListener("mousemove" , stopShake, false); 
+					
+				canvas.addEventListener("touchstart", onTouchStart, {passive: false});
+				canvas.addEventListener("touchmove" , onTouchMove,  {passive: false});
+				canvas.addEventListener("touchend"  , onTouchEnd);				
+			}
+
+			function resize(width, height)
+			{
+				canvas.width  = width;
+				canvas.height = height;
+				mRenderer.setSize(width, height);
+				let speedUp = 2.0;
+				
+				console.log("resize: width  =", width  / speedUp);
+				console.log("resize: height =", height / speedUp);
+				
+				mTexture1 = new THREE.WebGLRenderTarget(width / speedUp, height / speedUp,
+					{
+						minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+						format:    THREE.RGBFormat, type: THREE.FloatType
+					}
+				);
+				
+				mTexture2 = new THREE.WebGLRenderTarget(width / speedUp, height / speedUp,
+					{
+						minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+						format: THREE.RGBFormat, type: THREE.FloatType
+					}
+				); 
+				
+				mUniforms.screenWidth.value  = width  / speedUp;
+				mUniforms.screenHeight.value = height / speedUp;
+				
+				//console.log("mUniforms.screenWidth.value   =", mUniforms.screenWidth.value);
+				//console.log("mUniforms.screenHeight.value  =", mUniforms.screenHeight.value);
+			}
+
+			function animation()
+			{
+				mScreenQuad.material = mGSMaterial;
+				
+				for (let i = 0; i < 8; ++i)
+				{
+					if (!mToggled)
+					{
+						mUniforms.tSource.value = mTexture1;
+						mRenderer.render(mScene, mCamera, mTexture2, true);
+						mUniforms.tSource.value = mTexture2;
+					}
+					else
+					{
+						mUniforms.tSource.value = mTexture2;
+						mRenderer.render(mScene, mCamera, mTexture1, true);
+						mUniforms.tSource.value = mTexture1;
+					}
+					
+					mToggled = !mToggled;
+					mUniforms.brush.value = mMinusOnes;
+				}
+				
+				mScreenQuad.material = mScreenMaterial;
+				
+				mRenderer.render(mScene, mCamera);
+				requestAnimationFrame(animation);
+			}
+
+			function onMouseDown(event)
+			{
+				isMouseDown = true;
+				
+				position.px = event.clientX - event.target.getBoundingClientRect().left;
+				position.py = event.clientY - event.target.getBoundingClientRect().top;
+				position.x  = position.px;
+				position.y  = position.py;
+				
+				drawUV();
+
+				event.stopPropagation();
+			}
+
+			function onMouseMove(event)
+			{
+				if (isMouseDown)
+				{
+					position.x = event.clientX - event.target.getBoundingClientRect().left;
+					position.y = event.clientY - event.target.getBoundingClientRect().top;
+
+					drawUV();
+					
+					position.px  = position.x;
+					position.py  = position.y;
+					
+					event.stopPropagation();
+				}
+			}
+
+			function onMouseUp(event)
+			{
+				isMouseDown = false;
+				event.stopPropagation();
+			}
+
+			function onTouchStart(event)
+			{
+				if (isNotInit)
+				{
+					init();
+					isNotInit = false;
+				}
+				
+				isMouseDown = true;
+				
+				position.px = event.touches[0].pageX - event.target.getBoundingClientRect().left - getScrollPosition().x;
+				position.py = event.touches[0].pageY - event.target.getBoundingClientRect().top  - getScrollPosition().y;
+				position.x  = position.px;
+				position.y  = position.py;
+				
+				drawUV();
+				
+				if (event.cancelable)
+				{
+					event.preventDefault();
+				}
+				
+				event.stopPropagation();
+			}
+
+			function onTouchMove(event)
+			{			
+				if (isMouseDown)
+				{
+					position.x = event.touches[0].pageX - event.target.getBoundingClientRect().left - getScrollPosition().x;
+					position.y = event.touches[0].pageY - event.target.getBoundingClientRect().top  - getScrollPosition().y;
+					  
+					drawUV();
+					  
+					position.px = position.x;
+					position.py = position.y;
+					
+					if (event.cancelable)
+					{
+						event.preventDefault();
+					}
+					
+					event.stopPropagation();
+				}
+			}
+
+			function onTouchEnd(event)
+			{
+				isMouseDown = false;
+				event.stopPropagation();
+			}
+
+			// スクロール位置を取得する
+			function getScrollPosition(){
+				return {
+					"x": document.documentElement.scrollLeft || document.body.scrollLeft,
+					"y": document.documentElement.scrollTop  || document.body.scrollTop
+				};
+			}
+			
+			function initDrawUV()
+			{
+				for (let x = 0; x < 50; x++)
+				{
+					for (let y = 0; y < 50; y++)
+					{
+						let ux = x / 100.0;
+						let uy = y / 100.0;
+						mUniforms.brush.value = new THREE.Vector2(ux, uy);
+					}
+				}
+				//console.log("initDrawUV");
+			}
+
+			function drawUV()
+			{
+				let ux = position.x  * window.devicePixelRatio / canvas.width;
+				let uy = 1.0 - position.y * window.devicePixelRatio / canvas.height;
+				mUniforms.brush.value = new THREE.Vector2(ux, uy);
+			}
+
+			function stopShake(event){
+				isMouseDown = false;
+				event.stopPropagation();
+			}
+
+			function clearScreen()
+			{
+				isClearON = true;
+				
+				feed = mUniforms.feed.value;
+				kill = mUniforms.kill.value;
+				Du   = mUniforms.Du.value;
+				Dv   = mUniforms.Dv.value;
+				
+				// 参考： https://stackoverflow.com/questions/30359830/how-do-i-clear-three-js-scene
+				//        https://errorsfixing.com/how-do-i-clear-three-js-scene/
+				// mScene.remove.apply(mScene, mScene.children);
+				while (mScene.children.length > 0)
+				{
+					mScene.remove(mScene.children[0]);
+				}
+				
+				init();
+			}				
+		</script>
+		
+		<style>
+			* { margin: 0; padding: 0; }
+			#myCanvas { width: 1024px; height: 512px; }
+			#gui { width: 300px; position: absolute; top: 0; left: 750px; }
+		</style>
+		
+	</head>
+	
+	<body>
+		<canvas id="myCanvas"></canvas>
+	</body>
+	
+</html>

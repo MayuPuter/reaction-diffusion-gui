@@ -113,18 +113,15 @@
 			}
 		</script>
 		
-		<script type="importmap">
-			{
-				"imports": {
-					"lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.17/+esm"
-				}
-			}
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"
+			integrity="sha512-WoO4Ih0CDOSLYafy22wZD/mcJ7k0ESLqtQsFa6zFKnEUrbtuGU+GkLtVhgt93xa2qewG5gKEC6CWlN8OaCTSVg=="
+			crossorigin="anonymous"
+			referrerpolicy="no-referrer">
 		</script>
 		
 		<script src="./three.min.js"></script>
-		<script type="module">
-			import { GUI } from "lil-gui";
-			
+		<script type="module">			
 			let canvas          = null;
 			let isMouseDown     = false;
 			let isClearON       = false;
@@ -161,8 +158,8 @@
 			let Dv              = 0.105;
 			
 			// GUI
-			const gui = new GUI( { autoplace: false } );
-			gui.close();
+			const gui = new dat.GUI( { autoplace: false } );
+			//gui.close();
 			gui.domElement.id = "gui";
 			
 			const params = {
@@ -214,15 +211,15 @@
 				neon:    [0.025, 0.06 , 0.2097, 0.105],
 				worm:    [0.037, 0.06 , 0.1600, 0.100]
 			}).onChange(function() {
-				mUniforms.feed.value = selections.combo[0];
-				mUniforms.kill.value = selections.combo[1];
-				mUniforms.Du.value   = selections.combo[2];
-				mUniforms.Dv.value   = selections.combo[3];
+				mUniforms.feed.value = selections.combo.split(',')[0];
+				mUniforms.kill.value = selections.combo.split(',')[1];
+				mUniforms.Du.value   = selections.combo.split(',')[2];
+				mUniforms.Dv.value   = selections.combo.split(',')[3];
 				
-				params.feed = selections.combo[0];
-				params.kill = selections.combo[1];
-				params.Du   = selections.combo[2];
-				params.Dv   = selections.combo[3];
+				params.feed = selections.combo.split(',')[0];
+				params.kill = selections.combo.split(',')[1];
+				params.Du   = selections.combo.split(',')[2];
+				params.Dv   = selections.combo.split(',')[3];
 			});
 			
 			console.log(gui[0]);
@@ -506,7 +503,7 @@
 		<style>
 			* { margin: 0; padding: 0; }
 			#myCanvas { width: 1024px; height: 512px; }
-			#gui { width: 200px; position: absolute; top: 0; left: 824px; }
+			#gui { width: 300px; position: absolute; top: 0; left: 750px; }
 		</style>
 		
 	</head>
